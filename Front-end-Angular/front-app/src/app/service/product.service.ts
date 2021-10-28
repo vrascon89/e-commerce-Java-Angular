@@ -1,97 +1,107 @@
+import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Subject } from 'rxjs';
-import { CartItem } from '../common/cart-item';
+import { Observable } from 'rxjs';
+import { Product } from '../common/product';
+import { map } from 'rxjs/operators';
+import { ProductCategory } from '../common/product-category';
 
 @Injectable({
   providedIn: 'root'
 })
 
-export class CartService {
+export class ProductService {
 
-  cartItems: CartItem[] = [];
 
-  totalPrice: Subject<number> = new BehaviorSubject<number>(0);
-  totalQuantity: Subject<number> = new BehaviorSubject<number>(0);
+  private baseUrl = 'http://localhost:8080/api/products';
 
-  constructor() { }
+  private categoryUrl = 'http://localhost:8080/api/product-category';
 
-  addToCart(theCartItem: CartItem) {
+  constructor(private httpClient: HttpClient) { }
 
-    // Chequea si hay algun articulo seleccionado
-    let alreadyExistsInCart: boolean = false;
-    let existingCartItem: CartItem = undefined;
 
-    if (this.cartItems.length > 0) {
-    // Busca el item seleccionado segun el ID
+  getProduct(theProductId: number): Observable<Product> {
 
-     existingCartItem = this.cartItems.find( tempCartItem => tempCartItem.id === theCartItem.id);
+    const productUrl = `${this.baseUrl}/${theProductId}`;
 
-    alreadyExistsInCart = (existingCartItem != undefined);
-    }
+    return this.httpClient.get<Product>(productUrl);
 
-    // Si ya existe agrega uno más, si no existe suma el item al array
-    if (alreadyExistsInCart) {
-      existingCartItem.quantity++;
-    }
-    else {
-      this.cartItems.push(theCartItem);
-    }
-
-    // Calcula el precio y el total
-    this.computeCartTotals();
-
-    }
-
-  computeCartTotals() {
-    let totalPriceValue: number = 0;
-    let totalQuantityValue: number = 0;
-
-    for(let currentCartItem of this.cartItems){
-      totalPriceValue += currentCartItem.quantity * currentCartItem.unitPrice;
-      totalQuantityValue += currentCartItem.quantity;
-    }
-
-    // Sube los nuevos valores, todos los subscriptores reciben los datos
-    this.totalPrice.next(totalPriceValue);
-    this.totalQuantity.next(totalQuantityValue);
-
-    this.logCartData(totalPriceValue, totalQuantityValue);
   }
 
-  logCartData(totalPriceValue: number, totalQuantityValue: number) {
 
-    console.log('Contents of the cart');
-    for (let tempCartItem of this.cartItems){
-      const subTotalPrice = tempCartItem.quantity * tempCartItem.unitPrice;
-      console.log(`name: ${tempCartItem.name}, quantity=${tempCartItem.quantity}, unitPrice=${tempCartItem.unitPrice}, subTotalPrice=${subTotalPrice}`)
-    }
+  getProductListPaginate(thePage:number,
+                         thePageSize: number,
+                         theCategoryId: number): Observable<GetResponseProducts> {
 
-    // toFixed(2): Sólo muestra dos digitos despues del decimal
-    console.log(`totalPrice: ${totalPriceValue.toFixed(2)}, totalQuantity: ${totalQuantityValue}`);
-    console.log('---------');
+  // enviar los parametros page y size
+  const searchUrl = `${this.baseUrl}/search/findByCategoryId?id=${theCategoryId}`
+            + `&page=${thePage}&size=${thePageSize}`;
+
+  return this.httpClient.get<GetResponseProducts>(searchUrl);
+
   }
 
-  decrementQuantity(theCartItem: CartItem) {
+  // Obtener JSON de la lista Productos
+  getProductList(theCategoryId: number): Observable<Product[]> {
 
-    theCartItem.quantity--;
+    const searchUrl = `${this.baseUrl}/search/findByCategoryId?id=${theCategoryId}`;
 
-    if (theCartItem.quantity === 0) {
-      this.remove(theCartItem);
-    }
-    else {
-      this.computeCartTotals();
-    }
+    return this.getProducts(searchUrl);
+
   }
 
-  remove(theCartItem: CartItem) {
+  searchProducts(theKeyword: string): Observable<Product[]> {
 
-    const itemIndex = this.cartItems.findIndex(tempCartItem => tempCartItem.id === theCartItem.id);
+    const searchUrl = `${this.baseUrl}/search/findByNameContaining?name=${theKeyword}`;
 
-    if(itemIndex > -1) {
-      this.cartItems.splice(itemIndex, 1);
-      this.computeCartTotals();
-    }
+    return this.getProducts(searchUrl);
+
   }
 
+  // Paginación para elementos de búsqueda
+  searchProductsPaginate(thePage:number,
+                        thePageSize: number,
+                        theKeyword: string): Observable<GetResponseProducts> {
+
+    const searchUrl = `${this.baseUrl}/search/findByNameContaining?name=${theKeyword}`
+                    + `&page=${thePage}&size=${thePageSize}`;
+
+    return this.httpClient.get<GetResponseProducts>(searchUrl);
+
+    }
+
+  private getProducts(searchUrl: string): Observable<Product[]> {
+    return this.httpClient.get<GetResponseProducts>(searchUrl).pipe(
+      map(response => response._embedded.products)
+    );
+  }
+
+  // Metodo para obtener las categorias de los productos mediante Observable
+  getProductCategories(): Observable<ProductCategory[]> {
+
+    // llamada a la API REST, mapea el JSON de Spring data Rest
+    return this.httpClient.get<GetResponseProductCategory>(this.categoryUrl).pipe(
+      map(response => response._embedded.productCategory)
+    );
+
+  }
 
 }
+
+ // Uso de una interfaz para mostrar el JSON de la API REST
+  interface GetResponseProducts {
+    _embedded: {
+      products: Product[];
+    },
+    page: {
+      size:number,
+      totalElements: number,
+      totalPages: number,
+      number: number
+    }
+  }
+
+interface GetResponseProductCategory {
+    _embedded: {
+      productCategory: ProductCategory[];
+    }
+  }
